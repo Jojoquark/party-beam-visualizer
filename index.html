@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="BEAM Party" />
+  <title>BEAM — Party Audio Visualiser</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="stage" id="stage">
+    <canvas id="gl-canvas" aria-label="Audio Visualiser Projektion"></canvas>
+    <canvas id="fx-canvas" aria-hidden="true"></canvas>
+
+    <div id="stage-toast" class="stage-toast" role="status" aria-live="polite"></div>
+
+    <section id="start-screen" class="start-screen" aria-label="Startbildschirm">
+      <div class="start-card glass-surface">
+        <div class="start-brand">
+          <svg class="brand-mark" viewBox="0 0 36 36" width="36" height="36" fill="none" aria-hidden="true">
+            <circle cx="18" cy="20" r="13" stroke="currentColor" stroke-opacity="0.24" stroke-width="1.5" />
+            <line x1="18" y1="20" x2="18" y2="4" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" />
+            <line x1="18" y1="20" x2="9" y2="7" stroke="#00f0ff" stroke-width="1.5" stroke-linecap="round" />
+            <line x1="18" y1="20" x2="27" y2="7" stroke="#ff2e63" stroke-width="1.5" stroke-linecap="round" />
+            <circle cx="18" cy="20" r="3.2" fill="#ffffff" />
+          </svg>
+          <h1>Beamer Licht-Visualiser</h1>
+        </div>
+        <p class="start-desc">
+          Echtzeit-Lichteffekte auf reinem Tiefschwarz mit minimaler Latenz für iPad, iPhone und Beamer.
+        </p>
+
+        <div class="start-field">
+          <label for="start-device-select">Audio-Eingang</label>
+          <select id="start-device-select">
+            <option value="">Standard-Mikrofon / Line-In</option>
+          </select>
+        </div>
+
+        <div id="start-error" class="error-box" hidden></div>
+
+        <div class="start-actions">
+          <button id="btn-start-mic" class="btn-primary" type="button">
+            Mikrofon / Line-In starten
+          </button>
+          <button id="btn-start-test" class="btn-secondary" type="button">
+            Mit Test-Beat starten
+          </button>
+        </div>
+
+        <p class="start-tip">
+          iPad &amp; iPhone Tipp: Über „Teilen → Zum Home-Bildschirm“ ohne Browser-Leiste im Vollbild nutzen.
+        </p>
+      </div>
+    </section>
+
+    <aside id="drawer" class="drawer glass-surface" aria-label="Steuerung und Beamer-Einstellungen" hidden>
+      <div class="drawer-tabs" role="tablist">
+        <button class="tab-btn is-active" type="button" role="tab" data-tab="scenes" aria-selected="true">Szenen</button>
+        <button class="tab-btn" type="button" role="tab" data-tab="countdown" aria-selected="false">Countdown</button>
+        <button class="tab-btn" type="button" role="tab" data-tab="audio" aria-selected="false">Audio</button>
+        <button class="tab-btn" type="button" role="tab" data-tab="beamer" aria-selected="false">Beamer</button>
+      </div>
+
+      <div class="drawer-body">
+        <div class="tab-panel is-active" data-panel="scenes">
+          <div class="control-row">
+            <div class="control-label">
+              <span>Autopilot</span>
+              <small>Wechselt Szenen auf Drops &amp; Takte</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-autopilot" checked />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <div class="control-row">
+            <span class="control-label-inline">Wechsel-Intervall</span>
+            <div class="segmented" id="seg-beats">
+              <button type="button" data-beats="16">16 Takte</button>
+              <button type="button" data-beats="32" class="is-selected">32 Takte</button>
+              <button type="button" data-beats="64">64 Takte</button>
+            </div>
+          </div>
+
+          <div class="section-block">
+            <span class="block-title">Licht-Szenen</span>
+            <div id="scene-grid" class="chip-grid"></div>
+          </div>
+
+          <div class="section-block">
+            <span class="block-title">Farbpalette</span>
+            <div id="palette-grid" class="chip-grid"></div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Drop-Lichtakzente</span>
+              <small>Kontrollierte Impulse bei starken Drops</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-drop-flashes" checked />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Safe Mode (Kein Strobe)</span>
+              <small>Sperrt Blitze &amp; Strobe-Button komplett</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-safe-mode" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="tab-panel" data-panel="countdown">
+          <div id="cd-status-banner" class="status-banner">
+            Countdown inaktiv
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Ziel-Uhrzeit Automatik</span>
+              <small>Aktiviert Countdown 30s vor Zielzeit</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="cd-armed" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <div class="two-col">
+            <label class="input-group">
+              <span>Zielzeit</span>
+              <input type="time" id="cd-target-time" value="00:00" />
+            </label>
+            <label class="input-group">
+              <span>Vorlaufzeit</span>
+              <select id="cd-lead-sec">
+                <option value="10">10 Sekunden</option>
+                <option value="30" selected>30 Sekunden</option>
+                <option value="60">60 Sekunden</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="two-col">
+            <label class="input-group">
+              <span>Text um Null Uhr</span>
+              <input type="text" id="cd-headline" value="HAPPY BIRTHDAY" maxlength="32" />
+            </label>
+            <label class="input-group">
+              <span>Name / Zusatz (optional)</span>
+              <input type="text" id="cd-subtitle" placeholder="z.B. MAX!" maxlength="28" />
+            </label>
+          </div>
+
+          <div class="control-row">
+            <span class="control-label-inline">Anzeigedauer Text</span>
+            <select id="cd-celebrate-sec" class="compact-select">
+              <option value="15">15 Sekunden</option>
+              <option value="25" selected>25 Sekunden</option>
+              <option value="45">45 Sekunden</option>
+              <option value="60">60 Sekunden</option>
+            </select>
+          </div>
+
+          <div class="action-row">
+            <button id="btn-cd-start-now" class="btn-primary" type="button">
+              30s Countdown jetzt starten
+            </button>
+            <button id="btn-cd-preview-hb" class="btn-secondary" type="button">
+              Text testen
+            </button>
+            <button id="btn-cd-cancel" class="btn-danger" type="button" hidden>
+              Abbrechen
+            </button>
+          </div>
+        </div>
+
+        <div class="tab-panel" data-panel="audio">
+          <div class="meter-card">
+            <div class="meter-bars">
+              <div class="meter-col"><div class="meter-fill" id="m-sub"></div><span>Sub</span></div>
+              <div class="meter-col"><div class="meter-fill" id="m-bass"></div><span>Bass</span></div>
+              <div class="meter-col"><div class="meter-fill" id="m-mid"></div><span>Mid</span></div>
+              <div class="meter-col"><div class="meter-fill" id="m-high"></div><span>High</span></div>
+            </div>
+            <div class="meter-meta">
+              <span id="audio-mode-label">Quelle: Aktiv</span>
+              <span id="bpm-label" class="tabular">126 BPM</span>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button id="btn-src-mic" class="btn-secondary" type="button">Mikrofon / Line-In</button>
+            <button id="btn-src-test" class="btn-secondary" type="button">Test-Beat</button>
+          </div>
+
+          <div class="control-row" id="test-monitor-row" hidden>
+            <div class="control-label">
+              <span>Test-Beat hörbar abspielen</span>
+              <small>Nur für Aufbau ohne Lautsprecher-Musik</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-test-monitor" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <label class="input-group">
+            <span>Audio-Eingangsgerät</span>
+            <select id="drawer-device-select">
+              <option value="">Standard-Mikrofon / Line-In</option>
+            </select>
+          </label>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Auto-Gain (AGC)</span>
+              <small>Regelt leise &amp; laute Musik automatisch aus</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-autogain" checked />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <label class="slider-group">
+            <div class="slider-head">
+              <span>Empfindlichkeit</span>
+              <span id="val-sensitivity" class="tabular">1.0x</span>
+            </div>
+            <input type="range" id="opt-sensitivity" min="0.5" max="2.4" step="0.05" value="1.0" />
+          </label>
+
+          <label class="slider-group">
+            <div class="slider-head">
+              <span>Rausch-Gate (Stille filtern)</span>
+              <span id="val-noisegate" class="tabular">4%</span>
+            </div>
+            <input type="range" id="opt-noisegate" min="0" max="0.25" step="0.01" value="0.04" />
+          </label>
+        </div>
+
+        <div class="tab-panel" data-panel="beamer">
+          <label class="slider-group">
+            <div class="slider-head">
+              <span>Master-Dimmer (Helligkeit)</span>
+              <span id="val-brightness" class="tabular">100%</span>
+            </div>
+            <input type="range" id="opt-brightness" min="0.15" max="1" step="0.05" value="1" />
+          </label>
+
+          <label class="slider-group">
+            <div class="slider-head">
+              <span>Projektions-Zoom</span>
+              <span id="val-zoom" class="tabular">100%</span>
+            </div>
+            <input type="range" id="opt-zoom" min="0.4" max="1.35" step="0.05" value="1" />
+          </label>
+
+          <div class="control-row">
+            <span class="control-label-inline">Rand-Maske</span>
+            <div class="segmented" id="seg-mask">
+              <button type="button" data-mask="0" class="is-selected">Aus</button>
+              <button type="button" data-mask="1">Vignette</button>
+              <button type="button" data-mask="2">Kreis</button>
+              <button type="button" data-mask="3">Rahmen</button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Horizontal spiegeln (X)</span>
+              <small>Für Rückprojektion hinter Leinwand</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-mirror-x" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Vertikal spiegeln (Y)</span>
+              <small>Für überkopf montierte Beamer</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-mirror-y" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <div class="control-row">
+            <span class="control-label-inline">Render-Auflösung</span>
+            <select id="opt-quality" class="compact-select">
+              <option value="1">Leistung (1.0x)</option>
+              <option value="1.25" selected>Ausgewogen (1.25x)</option>
+              <option value="1.5">Scharf (1.5x)</option>
+              <option value="3">Nativ (Retina)</option>
+            </select>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label">
+              <span>Steuerleiste angepinnt</span>
+              <small>Deaktivieren für reines Beamer-Bild</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="opt-pin-hud" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button id="btn-beamer-reset" class="btn-secondary" type="button">
+              Beamer-Werte zurücksetzen
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <nav id="hud-dock" class="hud-dock glass-surface is-hidden" aria-label="Schnellsteuerung">
+      <button id="btn-prev" class="icon-btn" type="button" aria-label="Vorherige Szene" title="Vorherige Szene (Links)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+
+      <button id="btn-scene-pill" class="scene-pill" type="button" title="Szenen &amp; Autopilot">
+        <span id="hud-beat-dot" class="beat-dot" aria-hidden="true"></span>
+        <span id="hud-scene-name" class="scene-name">Scanner-Fächer</span>
+      </button>
+
+      <button id="btn-next" class="icon-btn" type="button" aria-label="Nächste Szene" title="Nächste Szene (Rechts)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+
+      <span class="dock-sep" aria-hidden="true"></span>
+
+      <button id="btn-palette" class="icon-btn" type="button" aria-label="Farbpalette wechseln" title="Farbpalette (C)">
+        <span id="hud-palette-dot" class="palette-swatch"></span>
+      </button>
+
+      <button id="btn-countdown-quick" class="icon-btn" type="button" aria-label="Countdown Menü" title="Countdown / 00:00">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="13" r="8"></circle>
+          <polyline points="12 9 12 13 14.5 14.5"></polyline>
+          <line x1="9" y1="2" x2="15" y2="2"></line>
+        </svg>
+        <span id="hud-cd-dot" class="cd-dot" hidden></span>
+      </button>
+
+      <button id="btn-strobe" class="pill-btn" type="button" title="Strobe halten (S)">
+        Strobe
+      </button>
+
+      <button id="btn-blackout" class="pill-btn" type="button" title="Blackout (Leertaste)">
+        Blackout
+      </button>
+
+      <button id="btn-fullscreen" class="icon-btn" type="button" aria-label="Vollbild" title="Vollbild (F)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <polyline points="9 21 3 21 3 15"></polyline>
+          <line x1="21" y1="3" x2="14" y2="10"></line>
+          <line x1="3" y1="21" x2="10" y2="14"></line>
+        </svg>
+      </button>
+
+      <button id="btn-drawer" class="icon-btn" type="button" aria-label="Einstellungen" title="Beamer &amp; Audio">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="4" y1="7" x2="20" y2="7"></line>
+          <circle cx="9" cy="7" r="2" fill="#000"></circle>
+          <line x1="4" y1="12" x2="20" y2="12"></line>
+          <circle cx="15" cy="12" r="2" fill="#000"></circle>
+          <line x1="4" y1="17" x2="20" y2="17"></line>
+          <circle cx="11" cy="17" r="2" fill="#000"></circle>
+        </svg>
+      </button>
+    </nav>
+  </main>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

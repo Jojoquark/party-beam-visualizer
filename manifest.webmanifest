@@ -1,0 +1,30 @@
+{
+  "name": "BEAM // Party Audio Visualiser",
+  "short_name": "BEAM Party",
+  "description": "Echtzeit-Audio-Visualiser mit minimaler Latenz fuer Beamer, Laser-Effekte und Mitternachts-Countdown.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
