@@ -14,6 +14,7 @@ const DEFAULT_PREFS = {
   paletteIndex: 0,
   autoPalette: true,
   autopilot: true,
+  directorMode: 'party',
   beatsPerScene: 32,
   dropFlashes: true,
   safeMode: false,
@@ -84,7 +85,8 @@ class PartyApp {
     this.audio = new AudioEngine();
     this.renderer = new GLRenderer(this.dom.glCanvas);
     this.countdownFX = new CountdownFX(this.dom.fxCanvas);
-    this.autopilot = new Autopilot(SCENES.length, PALETTES.length);
+    this.laserIndices = SCENES.map((s, i) => (s.isLaser ? i : -1)).filter((i) => i >= 0);
+    this.autopilot = new Autopilot(SCENES.length, PALETTES.length, this.laserIndices);
     this.wakeLock = new WakeLockManager();
 
     this.applyPrefsToEngines();
@@ -124,11 +126,14 @@ class PartyApp {
       hudPaletteDot: q('hud-palette-dot'),
       btnCountdownQuick: q('btn-countdown-quick'),
       hudCdDot: q('hud-cd-dot'),
+      btnLaserDirector: q('btn-laser-director'),
       btnStrobe: q('btn-strobe'),
       btnBlackout: q('btn-blackout'),
       btnFullscreen: q('btn-fullscreen'),
       btnDrawer: q('btn-drawer'),
       drawer: q('drawer'),
+      segDirector: q('seg-director'),
+      directorHint: q('director-hint'),
       sceneGrid: q('scene-grid'),
       paletteGrid: q('palette-grid'),
       optAutopilot: q('opt-autopilot'),
@@ -181,8 +186,13 @@ class PartyApp {
     this.countdownFX.resize(this.dom.glCanvas.width, this.dom.glCanvas.height);
 
     this.autopilot.enabled = p.autopilot;
+    this.autopilot.directorMode = p.directorMode === 'laser-strobe' ? 'laser-strobe' : 'party';
     this.autopilot.autoPalette = p.autoPalette;
     this.autopilot.beatsPerScene = p.beatsPerScene;
+
+    if (this.autopilot.directorMode === 'laser-strobe' && !SCENES[this.renderer.currentSceneIndex]?.isLaser) {
+      this.renderer.setSceneIndex(this.laserIndices[0] ?? 0);
+    }
 
     this.audio.autoGain = p.autoGain;
     this.audio.sensitivity = p.sensitivity;
@@ -252,6 +262,21 @@ class PartyApp {
     this.dom.hudPaletteDot.style.backgroundColor = pal.cssAccent;
     document.documentElement.style.setProperty('--accent', pal.cssAccent);
 
+    const isLaserMode = p.directorMode === 'laser-strobe';
+    this.dom.btnLaserDirector.classList.toggle('is-active', isLaserMode);
+
+    for (const btn of this.dom.segDirector.querySelectorAll('button')) {
+      btn.classList.toggle('is-selected', btn.dataset.director === p.directorMode);
+    }
+    if (isLaserMode) {
+      this.dom.directorHint.hidden = false;
+      this.dom.directorHint.textContent = p.safeMode
+        ? 'Nur Laser-Muster aktiv (Safe Mode sperrt automatische Blitze).'
+        : 'Director wechselt selbstständig durch alle Wand- & Raum-Laser inklusive Auto-Strobe.';
+    } else {
+      this.dom.directorHint.hidden = true;
+    }
+
     this.dom.optAutopilot.checked = p.autopilot;
     this.dom.optDropFlashes.checked = p.dropFlashes;
     this.dom.optSafeMode.checked = p.safeMode;
@@ -267,7 +292,9 @@ class PartyApp {
     }
 
     for (const btn of this.dom.sceneGrid.querySelectorAll('.chip-btn')) {
-      btn.classList.toggle('is-selected', Number(btn.dataset.sceneIdx) === this.renderer.currentSceneIndex);
+      const idx = Number(btn.dataset.sceneIdx);
+      btn.classList.toggle('is-selected', idx === this.renderer.currentSceneIndex);
+      btn.classList.toggle('is-dimmed', isLaserMode && !SCENES[idx]?.isLaser);
     }
 
     for (const btn of this.dom.paletteGrid.querySelectorAll('.chip-btn')) {
@@ -319,10 +346,43 @@ class PartyApp {
     this.dom.btnFullscreen.hidden = !canFs;
   }
 
+  setDirectorMode(mode) {
+    const next = mode === 'laser-strobe' ? 'laser-strobe' : 'party';
+    this.prefs.directorMode = next;
+    this.autopilot.directorMode = next;
+    this.autopilot.resetTimer(performance.now());
+    if (next === 'laser-strobe') {
+      if (!SCENES[this.renderer.currentSceneIndex]?.isLaser) {
+        this.renderer.setSceneIndex(this.laserIndices[0] ?? 0);
+        this.prefs.sceneIndex = this.renderer.currentSceneIndex;
+      }
+      this.showToast('Director: Nur Laser & Strobe');
+    } else {
+      this.showToast('Director: Party-Mix');
+    }
+    savePrefs(this.prefs);
+    this.syncControlsUI();
+  }
+
+  stepScene(delta) {
+    if (this.prefs.directorMode === 'laser-strobe' && this.laserIndices.length > 0) {
+      const curPos = this.laserIndices.indexOf(this.renderer.currentSceneIndex);
+      const basePos = curPos === -1 ? 0 : curPos;
+      const nextPos = ((basePos + delta) % this.laserIndices.length + this.laserIndices.length) % this.laserIndices.length;
+      this.setScene(this.laserIndices[nextPos], true);
+      return;
+    }
+    this.setScene(this.renderer.currentSceneIndex + delta, true);
+  }
+
   setScene(idx, fromUser = false) {
     this.renderer.setSceneIndex(idx);
     this.prefs.sceneIndex = this.renderer.currentSceneIndex;
     if (fromUser) {
+      if (this.prefs.directorMode === 'laser-strobe' && !SCENES[this.renderer.currentSceneIndex]?.isLaser) {
+        this.prefs.directorMode = 'party';
+        this.autopilot.directorMode = 'party';
+      }
       this.autopilot.resetTimer(performance.now());
       savePrefs(this.prefs);
       this.showToast(SCENES[this.renderer.currentSceneIndex].name);
@@ -507,7 +567,7 @@ class PartyApp {
       pointerStart = null;
 
       if (Math.abs(dx) > 54 && Math.abs(dx) > Math.abs(dy) * 1.4 && dt < 650) {
-        this.setScene(this.renderer.currentSceneIndex + (dx < 0 ? 1 : -1), true);
+        this.stepScene(dx < 0 ? 1 : -1);
         return;
       }
 
@@ -526,16 +586,21 @@ class PartyApp {
     this.dom.drawer.addEventListener('pointerdown', () => this.scheduleHudHide());
 
     this.dom.btnPrev.addEventListener('click', () => {
-      this.setScene(this.renderer.currentSceneIndex - 1, true);
+      this.stepScene(-1);
       this.scheduleHudHide();
     });
     this.dom.btnNext.addEventListener('click', () => {
-      this.setScene(this.renderer.currentSceneIndex + 1, true);
+      this.stepScene(1);
       this.scheduleHudHide();
     });
     this.dom.btnScenePill.addEventListener('click', () => this.toggleDrawer('scenes'));
     this.dom.btnDrawer.addEventListener('click', () => this.toggleDrawer());
     this.dom.btnCountdownQuick.addEventListener('click', () => this.toggleDrawer('countdown'));
+    this.dom.btnLaserDirector.addEventListener('click', () => {
+      const next = this.prefs.directorMode === 'laser-strobe' ? 'party' : 'laser-strobe';
+      this.setDirectorMode(next);
+      this.scheduleHudHide();
+    });
 
     this.dom.btnPalette.addEventListener('click', () => {
       this.setPalette(this.targetPaletteIdx + 1, false);
@@ -575,6 +640,12 @@ class PartyApp {
 
     for (const tabBtn of this.dom.drawer.querySelectorAll('.tab-btn')) {
       tabBtn.addEventListener('click', () => this.switchTab(tabBtn.dataset.tab));
+    }
+
+    for (const b of this.dom.segDirector.querySelectorAll('button')) {
+      b.addEventListener('click', () => {
+        this.setDirectorMode(b.dataset.director);
+      });
     }
 
     this.dom.optAutopilot.addEventListener('change', (e) => {
@@ -786,9 +857,11 @@ class PartyApp {
         if (this.blackout) this.showHud();
         else this.scheduleHudHide();
       } else if (e.code === 'ArrowRight') {
-        this.setScene(this.renderer.currentSceneIndex + 1, true);
+        this.stepScene(1);
       } else if (e.code === 'ArrowLeft') {
-        this.setScene(this.renderer.currentSceneIndex - 1, true);
+        this.stepScene(-1);
+      } else if (e.key === 'l' || e.key === 'L') {
+        this.setDirectorMode(this.prefs.directorMode === 'laser-strobe' ? 'party' : 'laser-strobe');
       } else if (e.key === 'c' || e.key === 'C') {
         this.setPalette(this.targetPaletteIdx + 1, false);
         this.showToast(`Palette: ${PALETTES[this.targetPaletteIdx].name}`);
@@ -884,13 +957,14 @@ class PartyApp {
       audio,
       this.renderer.currentSceneIndex,
       this.targetPaletteIdx,
-      this.countdownFX.state
+      this.countdownFX.state,
+      this.prefs.safeMode
     );
-    if (autoResult) {
+    if (autoResult.nextScene !== null) {
       this.setScene(autoResult.nextScene, false);
-      if (autoResult.nextPalette !== this.targetPaletteIdx) {
-        this.setPalette(autoResult.nextPalette, false);
-      }
+    }
+    if (autoResult.nextPalette !== null && autoResult.nextPalette !== this.targetPaletteIdx) {
+      this.setPalette(autoResult.nextPalette, false);
     }
 
     if (this.prefs.safeMode) {
@@ -905,10 +979,12 @@ class PartyApp {
 
     const manualStrobe =
       !this.prefs.safeMode && this.strobeHeld && Math.sin(nowMs * 0.062) > 0.22 ? 0.85 : 0.0;
+    const totalStrobe = Math.max(manualStrobe, autoResult.directorStrobe || 0);
 
     this.renderer.render(elapsedSec, dtSec, audio, this.activePalette, {
       dropAccent: this.dropFlashLevel,
-      strobeLevel: manualStrobe,
+      laserGain: autoResult.laserGain,
+      strobeLevel: totalStrobe,
       brightness: this.prefs.brightness,
       blackout: this.blackout,
       mirrorX: this.prefs.mirrorX,

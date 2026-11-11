@@ -72,6 +72,15 @@
       <div class="drawer-body">
         <div class="tab-panel is-active" data-panel="scenes">
           <div class="control-row">
+            <span class="control-label-inline">Director-Modus</span>
+            <div class="segmented" id="seg-director">
+              <button type="button" data-director="party" class="is-selected">Party-Mix</button>
+              <button type="button" data-director="laser-strobe">Laser &amp; Strobe</button>
+            </div>
+          </div>
+          <p id="director-hint" class="director-hint" hidden></p>
+
+          <div class="control-row">
             <div class="control-label">
               <span>Autopilot</span>
               <small>Wechselt Szenen auf Drops &amp; Takte</small>
@@ -364,6 +373,10 @@
           <line x1="9" y1="2" x2="15" y2="2"></line>
         </svg>
         <span id="hud-cd-dot" class="cd-dot" hidden></span>
+      </button>
+
+      <button id="btn-laser-director" class="pill-btn" type="button" title="Nur Laser &amp; Strobe Director (L)">
+        Laser
       </button>
 
       <button id="btn-strobe" class="pill-btn" type="button" title="Strobe halten (S)">

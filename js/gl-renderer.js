@@ -25,6 +25,7 @@ uniform float uKick;
 uniform float uSnare;
 uniform float uDrop;
 uniform float uDropAccent;
+uniform float uLaserGain;
 uniform float uStrobe;
 uniform float uBrightness;
 uniform float uBlackout;
@@ -81,6 +82,8 @@ void main() {
   }
 
   vec3 col = renderScene(uv, aspect);
+
+  col *= max(0.0, uLaserGain);
 
   if (uDropAccent > 0.001) {
     col *= 1.0 + uDropAccent * 1.45;
@@ -175,6 +178,7 @@ export class GLRenderer {
         uSnare: gl.getUniformLocation(prog, 'uSnare'),
         uDrop: gl.getUniformLocation(prog, 'uDrop'),
         uDropAccent: gl.getUniformLocation(prog, 'uDropAccent'),
+        uLaserGain: gl.getUniformLocation(prog, 'uLaserGain'),
         uStrobe: gl.getUniformLocation(prog, 'uStrobe'),
         uBrightness: gl.getUniformLocation(prog, 'uBrightness'),
         uBlackout: gl.getUniformLocation(prog, 'uBlackout'),
@@ -283,6 +287,7 @@ export class GLRenderer {
     gl.uniform1f(u.uSnare, audio.snare);
     gl.uniform1f(u.uDrop, audio.drop);
     gl.uniform1f(u.uDropAccent, settings.dropAccent || 0);
+    gl.uniform1f(u.uLaserGain, settings.laserGain !== undefined ? settings.laserGain : 1.0);
     gl.uniform1f(u.uStrobe, settings.strobeLevel);
     gl.uniform1f(u.uBrightness, settings.brightness);
     gl.uniform1f(u.uBlackout, settings.blackout ? 1.0 : 0.0);

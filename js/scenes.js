@@ -3,6 +3,7 @@ export const SCENES = [
     id: 'laser-fan',
     name: 'Scanner-Fächer',
     category: 'Laser / Nebel',
+    isLaser: true,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
@@ -60,6 +61,7 @@ vec3 renderScene(vec2 uv, float aspect) {
     id: 'laser-tunnel',
     name: 'Laser-Tunnel',
     category: 'Laser / Nebel',
+    isLaser: true,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
@@ -104,6 +106,7 @@ vec3 renderScene(vec2 uv, float aspect) {
     id: 'prism-beams',
     name: 'Radial-Kegel',
     category: 'Laser / Nebel',
+    isLaser: true,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
@@ -139,6 +142,7 @@ vec3 renderScene(vec2 uv, float aspect) {
     id: 'horizon-matrix',
     name: 'Horizont & Matrix',
     category: 'Laser / Nebel',
+    isLaser: true,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
@@ -172,9 +176,147 @@ vec3 renderScene(vec2 uv, float aspect) {
 `
   },
   {
+    id: 'laser-lissajous',
+    name: 'Laser-Lissajous',
+    category: 'Laser / Wand',
+    isLaser: true,
+    frag: `
+float segDist(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a;
+  vec2 ba = b - a;
+  float h = clamp(dot(pa, ba) / max(1e-5, dot(ba, ba)), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+vec2 lissajousPoint(float t, float fx, float fy, float phase, float morph) {
+  float rScale = 0.72 + 0.14 * sin(t * 2.0 + morph);
+  return vec2(
+    sin(t * fx + phase) * rScale,
+    sin(t * fy + morph * 0.7) * rScale * 0.85
+  );
+}
+
+vec3 renderScene(vec2 uv, float aspect) {
+  vec2 p = vec2(uv.x * aspect, uv.y);
+  float rot = uTime * 0.28 + uBeatAccum * 0.15;
+  float cR = cos(rot);
+  float sR = sin(rot);
+  p = vec2(p.x * cR - p.y * sR, p.x * sR + p.y * cR);
+
+  float fx = 2.0 + floor(mod(uBeatAccum * 0.15, 3.0));
+  float fy = fx + 1.0;
+  float phase = uTime * (0.95 + uMid * 0.65);
+  float morph = uTime * 0.4 + uBass * 0.85;
+
+  float minD = 9.9;
+  vec2 prevPt = lissajousPoint(0.0, fx, fy, phase, morph);
+  for (int i = 1; i <= 32; i++) {
+    float t = (float(i) / 32.0) * 6.2831853;
+    vec2 curPt = lissajousPoint(t, fx, fy, phase, morph);
+    minD = min(minD, segDist(p, prevPt, curPt));
+    prevPt = curPt;
+  }
+
+  float width = 0.008 + uKick * 0.014;
+  float beam = exp(-minD / width);
+  float core = exp(-minD / 0.0028);
+
+  float minD2 = 9.9;
+  vec2 prevPt2 = lissajousPoint(0.0, fy, fx + 1.0, -phase * 0.7, morph + 1.2);
+  for (int j = 1; j <= 24; j++) {
+    float t2 = (float(j) / 24.0) * 6.2831853;
+    vec2 curPt2 = lissajousPoint(t2, fy, fx + 1.0, -phase * 0.7, morph + 1.2);
+    minD2 = min(minD2, segDist(p, prevPt2, curPt2));
+    prevPt2 = curPt2;
+  }
+  float beam2 = exp(-minD2 / (0.007 + uSnare * 0.014));
+
+  vec3 col = uColA * beam * (0.7 + uBass * 0.9) + uColC * core * 0.75;
+  col += uColB * beam2 * (0.4 + uMid * 0.85 + uHigh * 0.5);
+  return col;
+}
+`
+  },
+  {
+    id: 'laser-polygons',
+    name: 'Laser-Polygone',
+    category: 'Laser / Wand',
+    isLaser: true,
+    frag: `
+float polyDist(vec2 p, float sides, float radius, float rot) {
+  float a = atan(p.y, p.x + 1e-5) + rot;
+  float slice = 6.2831853 / sides;
+  float sector = mod(a, slice) - slice * 0.5;
+  return abs(cos(sector) * length(p) - radius);
+}
+
+vec3 renderScene(vec2 uv, float aspect) {
+  vec2 p = vec2(uv.x * aspect, uv.y);
+  vec3 col = vec3(0.0);
+
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    float sides = 3.0 + mod(fi + floor(uBeatAccum * 0.25), 4.0);
+    float radius = 0.22 + fi * 0.18 + uKick * 0.08 * (1.0 - fi * 0.18);
+    float dir = mod(fi, 2.0) < 0.5 ? 1.0 : -1.0;
+    float rot = uTime * (0.45 + fi * 0.18) * dir + uBeatAccum * 0.18 * dir;
+
+    float d = polyDist(p, sides, radius, rot);
+    float spec = sampleSpec(fi / 4.0);
+    float w = 0.007 + uKick * 0.011 + spec * 0.008;
+    float line = exp(-d / w);
+    float core = exp(-d / 0.0025);
+    vec3 c = mix(uColA, uColB, fi / 3.0);
+    col += c * line * (0.6 + uEnergy * 0.8 + spec * 0.6) + uColC * core * 0.45;
+  }
+
+  float a = atan(p.y, p.x + 1e-5);
+  float r = length(p);
+  float ray = exp(-abs(sin(a * 4.0 + uTime * 0.7)) / (0.012 + uHigh * 0.02)) * smoothstep(0.18, 0.9, r);
+  col += uColB * ray * (0.15 + uSnare * 0.7 + uHigh * 0.45);
+  return col;
+}
+`
+  },
+  {
+    id: 'laser-array',
+    name: 'Laser-Punktraster',
+    category: 'Laser / Wand',
+    isLaser: true,
+    frag: `
+vec3 renderScene(vec2 uv, float aspect) {
+  vec2 p = vec2(uv.x * aspect, uv.y);
+  float tilt = sin(uTime * 0.48) * 0.35 + uMid * 0.25 * cos(uTime * 0.9);
+  float cT = cos(tilt);
+  float sT = sin(tilt);
+  vec2 pr = vec2(p.x * cT - p.y * sT, p.x * sT + p.y * cT);
+
+  vec2 scale = vec2(5.5 + uBass * 1.5, 4.0);
+  vec2 g = pr * scale + vec2(uTime * 0.8, sin(pr.x * 2.2 + uTime * 2.2) * (0.4 + uBass * 0.7));
+  vec2 cell = fract(g) - 0.5;
+  vec2 id = floor(g);
+
+  float hash = fract(sin(dot(id, vec2(12.9898, 78.233))) * 43758.5453);
+  float spec = sampleSpec(hash);
+  float dotRadius = 0.012 + uKick * 0.02 + spec * 0.018;
+  float spot = exp(-dot(cell, cell) / dotRadius);
+
+  float hLine = exp(-abs(cell.y) / (0.022 + uSnare * 0.035));
+  float vLine = exp(-abs(cell.x) / (0.022 + uHigh * 0.035));
+
+  vec3 col = mix(uColA, uColB, hash) * spot * (0.7 + uEnergy * 1.1);
+  col += uColA * hLine * (0.08 + uSnare * 0.65);
+  col += uColB * vLine * (0.06 + uHigh * 0.55);
+  col += uColC * spot * spot * 0.55;
+  return col * smoothstep(1.65, 0.25, length(p));
+}
+`
+  },
+  {
     id: 'shockwaves',
     name: 'Bass-Schockwellen',
     category: 'Wand / Raum',
+    isLaser: false,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
@@ -208,6 +350,7 @@ vec3 renderScene(vec2 uv, float aspect) {
     id: 'kaleidoscope',
     name: 'Kaleidoskop-Prism',
     category: 'Wand / Raum',
+    isLaser: false,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
@@ -241,6 +384,7 @@ vec3 renderScene(vec2 uv, float aspect) {
     id: 'hyperspace',
     name: 'Hyperraum-Vortex',
     category: 'Wand / Raum',
+    isLaser: false,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
@@ -278,6 +422,7 @@ vec3 renderScene(vec2 uv, float aspect) {
     id: 'spectrum-ring',
     name: 'Frequenz-Geometrie',
     category: 'Wand / Raum',
+    isLaser: false,
     frag: `
 vec3 renderScene(vec2 uv, float aspect) {
   vec2 p = vec2(uv.x * aspect, uv.y);
